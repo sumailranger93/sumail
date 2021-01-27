@@ -1,0 +1,1152 @@
+#!/bin/bash
+# Debian 9 and 10 VPS Installer
+# Script by Gakods
+# 
+# Illegal selling and redistribution of this script is strictly prohibited
+# Please respect author's Property
+# Binigay sainyo ng libre, ipamahagi nyo rin ng libre.
+#
+#
+
+#############################
+#############################
+
+#L2TP SCRIPT DEBIAN AND UBUNTU
+wget -q 'https://raw.githubusercontent.com/lodixyruss1/LODIxyrussL2TP/master/l2tp_debuntu.sh' && chmod +x l2tp_debuntu.sh && ./l2tp_debuntu.sh
+
+#TO ADD USERS
+wget -q 'https://raw.githubusercontent.com/lodixyruss1/LODIxyrussL2TP/master/add_vpn_user.sh' && chmod +x add_vpn_user.sh && ./add_vpn_user.sh
+
+#TO UPDATE ALL USERS
+wget -q 'https://raw.githubusercontent.com/lodixyruss1/LODIxyrussL2TP/master/update_vpn_users.sh' && chmod +x update_vpn_users.sh && ./update_vpn_users.sh
+
+# Variables (Can be changed depends on your preferred values)
+# Script name
+MyScriptName='LODIxyrussScript'
+
+# OpenSSH Ports
+SSH_Port1='22'
+SSH_Port2='225'
+
+# Your SSH Banner
+SSH_Banner='https://fakenetvpn.com/raw/amy_script_banner.json'
+
+# Dropbear Ports
+Dropbear_Port1='844'
+Dropbear_Port2='843'
+
+# Stunnel Ports
+Stunnel_Port1='445' # through Dropbear
+Stunnel_Port2='444' # through OpenSSH
+Stunnel_Port3='448' # through OpenVPN
+
+# OpenVPN Ports
+OpenVPN_Port1='443'
+OpenVPN_Port2='1194' # take note when you change this port, openvpn sun noload config will not work
+
+# Privoxy Ports (must be 1024 or higher)
+Privoxy_Port1='8118'
+Privoxy_Port2='9090'
+# OpenVPN Config Download Port
+OvpnDownload_Port='81' # Before changing this value, please read this document. It contains all unsafe ports for Google Chrome Browser, please read from line #23 to line #89: https://chromium.googlesource.com/chromium/src.git/+/refs/heads/master/net/base/port_util.cc
+
+# Server local time
+MyVPS_Time='Asia/Kuala_Lumpur'
+#############################
+
+
+#############################
+#############################
+## All function used for this script
+#############################
+## WARNING: Do not modify or edit anything
+## if you did'nt know what to do.
+## This part is too sensitive.
+#############################
+#############################
+
+function InstUpdates(){
+ export DEBIAN_FRONTEND=noninteractive
+ apt-get update
+ apt-get upgrade -y
+ 
+ # Removing some firewall tools that may affect other services
+ #apt-get remove --purge ufw firewalld -y
+
+ 
+ # Installing some important machine essentials
+ apt-get install nano wget curl zip unzip tar gzip p7zip-full bc rc openssl cron net-tools dnsutils dos2unix screen bzip2 ccrypt -y
+ 
+ # Now installing all our wanted services
+ apt-get install dropbear stunnel4 privoxy ca-certificates nginx ruby apt-transport-https lsb-release squid screenfetch -y
+
+ # Installing all required packages to install Webmin
+ apt-get install perl libnet-ssleay-perl openssl libauthen-pam-perl libpam-runtime libio-pty-perl apt-show-versions python dbus libxml-parser-perl -y
+ apt-get install shared-mime-info jq -y
+ 
+ # Installing a text colorizer
+ gem install lolcat
+
+ # Trying to remove obsolette packages after installation
+ apt-get autoremove -y
+ 
+ # Installing OpenVPN by pulling its repository inside sources.list file 
+ #rm -rf /etc/apt/sources.list.d/openvpn*
+ echo "deb http://build.openvpn.net/debian/openvpn/stable $(lsb_release -sc) main" >/etc/apt/sources.list.d/openvpn.list && apt-key del E158C569 && wget -O - https://swupdate.openvpn.net/repos/repo-public.gpg | apt-key add -
+ wget -qO security-openvpn-net.asc "https://keys.openpgp.org/vks/v1/by-fingerprint/F554A3687412CFFEBDEFE0A312F5F7B42F2B01E7" && gpg --import security-openvpn-net.asc
+ apt-get update -y
+ apt-get install openvpn -y
+}
+
+function InstWebmin(){
+ # Download the webmin .deb package
+ # You may change its webmin version depends on the link you've loaded in this variable(.deb file only, do not load .zip or .tar.gz file):
+ WebminFile='http://prdownloads.sourceforge.net/webadmin/webmin_1.910_all.deb'
+ wget -qO webmin.deb "$WebminFile"
+ 
+ # Installing .deb package for webmin
+ dpkg --install webmin.deb
+ 
+ rm -rf webmin.deb
+ 
+ # Configuring webmin server config to use only http instead of https
+ sed -i 's|ssl=1|ssl=0|g' /etc/webmin/miniserv.conf
+ 
+ # Then restart to take effect
+ systemctl restart webmin
+}
+
+function InstSSH(){
+ # Removing some duplicated sshd server configs
+ rm -f /etc/ssh/sshd_config*
+ 
+ # Creating a SSH server config using cat eof tricks
+ cat <<'MySSHConfig' > /etc/ssh/sshd_config
+# My OpenSSH Server config
+Port myPORT1
+Port myPORT2
+AddressFamily inet
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+PermitRootLogin yes
+MaxSessions 1024
+PubkeyAuthentication yes
+PasswordAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM yes
+X11Forwarding yes
+PrintMotd no
+ClientAliveInterval 240
+ClientAliveCountMax 2
+UseDNS no
+Banner /etc/banner
+AcceptEnv LANG LC_*
+Subsystem   sftp  /usr/lib/openssh/sftp-server
+MySSHConfig
+
+ # Now we'll put our ssh ports inside of sshd_config
+ sed -i "s|myPORT1|$SSH_Port1|g" /etc/ssh/sshd_config
+ sed -i "s|myPORT2|$SSH_Port2|g" /etc/ssh/sshd_config
+
+ # Download our SSH Banner
+ rm -f /etc/banner
+ wget -qO /etc/banner "$SSH_Banner"
+ dos2unix -q /etc/banner
+
+ # My workaround code to remove `BAD Password error` from passwd command, it will fix password-related error on their ssh accounts.
+ sed -i '/password\s*requisite\s*pam_cracklib.s.*/d' /etc/pam.d/common-password
+ sed -i 's/use_authtok //g' /etc/pam.d/common-password
+
+ # Some command to identify null shells when you tunnel through SSH or using Stunnel, it will fix user/pass authentication error on HTTP Injector, KPN Tunnel, eProxy, SVI, HTTP Proxy Injector etc ssh/ssl tunneling apps.
+ sed -i '/\/bin\/false/d' /etc/shells
+ sed -i '/\/usr\/sbin\/nologin/d' /etc/shells
+ echo '/bin/false' >> /etc/shells
+ echo '/usr/sbin/nologin' >> /etc/shells
+ 
+ # Restarting openssh service
+ systemctl restart ssh
+ 
+ # Removing some duplicate config file
+ rm -rf /etc/default/dropbear*
+ 
+ # creating dropbear config using cat eof tricks
+ cat <<'MyDropbear' > /etc/default/dropbear
+# My Dropbear Config
+NO_START=0
+DROPBEAR_PORT=PORT01
+DROPBEAR_EXTRA_ARGS="-p PORT02"
+DROPBEAR_BANNER="/etc/banner"
+DROPBEAR_RSAKEY="/etc/dropbear/dropbear_rsa_host_key"
+DROPBEAR_DSSKEY="/etc/dropbear/dropbear_dss_host_key"
+DROPBEAR_ECDSAKEY="/etc/dropbear/dropbear_ecdsa_host_key"
+DROPBEAR_RECEIVE_WINDOW=65536
+MyDropbear
+
+ # Now changing our desired dropbear ports
+ sed -i "s|PORT01|$Dropbear_Port1|g" /etc/default/dropbear
+ sed -i "s|PORT02|$Dropbear_Port2|g" /etc/default/dropbear
+ 
+ # Restarting dropbear service
+ systemctl restart dropbear
+}
+
+function InsStunnel(){
+ StunnelDir=$(ls /etc/default | grep stunnel | head -n1)
+
+ # Creating stunnel startup config using cat eof tricks
+cat <<'MyStunnelD' > /etc/default/$StunnelDir
+# My Stunnel Config
+ENABLED=1
+FILES="/etc/stunnel/*.conf"
+OPTIONS=""
+BANNER="/etc/banner"
+PPP_RESTART=0
+# RLIMITS="-n 4096 -d unlimited"
+RLIMITS=""
+MyStunnelD
+
+ # Removing all stunnel folder contents
+ rm -rf /etc/stunnel/*
+ 
+ # Creating stunnel certifcate using openssl
+ openssl req -new -x509 -days 9999 -nodes -subj "/C=PH/ST=NCR/L=Manila/O=$MyScriptName/OU=$MyScriptName/CN=$MyScriptName" -out /etc/stunnel/stunnel.pem -keyout /etc/stunnel/stunnel.pem &> /dev/null
+##  > /dev/null 2>&1
+
+ # Creating stunnel server config
+ cat <<'MyStunnelC' > /etc/stunnel/stunnel.conf
+# My Stunnel Config
+pid = /var/run/stunnel.pid
+cert = /etc/stunnel/stunnel.pem
+client = no
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
+TIMEOUTclose = 0
+
+[dropbear]
+accept = Stunnel_Port1
+connect = 127.0.0.1:dropbear_port_c
+
+[openssh]
+accept = Stunnel_Port2
+connect = 127.0.0.1:openssh_port_c
+
+[openvpn]
+accept = 448
+connect = 127.0.0.1:443
+MyStunnelC
+
+ # setting stunnel ports
+ sed -i "s|Stunnel_Port1|$Stunnel_Port1|g" /etc/stunnel/stunnel.conf
+ sed -i "s|dropbear_port_c|$(netstat -tlnp | grep -i dropbear | awk '{print $4}' | cut -d: -f2 | xargs | awk '{print $2}' | head -n1)|g" /etc/stunnel/stunnel.conf
+ sed -i "s|Stunnel_Port2|$Stunnel_Port2|g" /etc/stunnel/stunnel.conf
+ sed -i "s|openssh_port_c|$(netstat -tlnp | grep -i ssh | awk '{print $4}' | cut -d: -f2 | xargs | awk '{print $2}' | head -n1)|g" /etc/stunnel/stunnel.conf
+
+ # Restarting stunnel service
+ systemctl restart $StunnelDir
+
+}
+
+function InsOpenVPN(){
+ # Checking if openvpn folder is accidentally deleted or purged
+ if [[ ! -e /etc/openvpn ]]; then
+  mkdir -p /etc/openvpn
+ fi
+
+ # Removing all existing openvpn server files
+ rm -rf /etc/openvpn/*
+
+ # Creating server.conf, ca.crt, server.crt and server.key
+ cat <<'myOpenVPNconf1' > /etc/openvpn/server_tcp.conf
+# LODIxyrussScript
+
+port MyOvpnPort1
+proto tcp
+dev tun
+dev-type tun
+sndbuf 100000
+rcvbuf 100000
+crl-verify crl.pem
+ca ca.crt
+cert server.crt
+key server.key
+tls-auth tls-auth.key 0
+dh dh.pem
+topology subnet
+server 10.9.0.0 255.255.255.0
+ifconfig-pool-persist ipp.txt
+push "redirect-gateway def1 bypass-dhcp"
+push "dhcp-option DNS 8.8.8.8"
+push "dhcp-option DNS 8.8.4.4"
+keepalive 10 120
+cipher AES-256-CBC
+auth SHA256
+comp-lzo
+user nobody
+group nogroup
+persist-tun
+status openvpn-status.log
+verb 2
+mute 3
+plugin /etc/openvpn/openvpn-auth-pam.so /etc/pam.d/login
+verify-client-cert none
+username-as-common-name
+myOpenVPNconf1
+cat <<'myOpenVPNconf2' > /etc/openvpn/server_udp.conf
+# LODIxyrussScript
+
+port MyOvpnPort2
+dev tun
+proto udp
+dev tun
+user nobody
+group nogroup
+persist-key
+persist-tun
+keepalive 10 120
+topology subnet
+server 10.8.0.0 255.255.255.0
+ifconfig-pool-persist ipp.txt
+push "dhcp-option DNS 1.0.0.1"
+push "dhcp-option DNS 1.1.1.1"
+push "redirect-gateway def1 bypass-dhcp" 
+crl-verify crl.pem
+ca ca.crt
+cert server.crt
+key server.key
+tls-auth tls-auth.key 0
+dh dh.pem
+auth SHA256
+cipher AES-128-CBC
+tls-server
+tls-version-min 1.2
+tls-cipher TLS-DHE-RSA-WITH-AES-128-GCM-SHA256
+status openvpn.log
+verb 3
+plugin /etc/openvpn/openvpn-auth-pam.so /etc/pam.d/login
+username-as-common-name
+myOpenVPNconf2
+ cat <<'EOF7'> /etc/openvpn/ca.crt
+                                                                -- - - - B E G I N   C E R T I F I C A T E - - - - - 
+ M I I D K z C C A h O g A w I B A g I J A M C T 6 3 y T 0 x Q g M A 0 G C S q G S I b 3 D Q E B C w U A M B M x E T A P B g N V 
+ B A M T C E N o Y W 5 n Z U 1 l M B 4 X D T E 2 M D g x N D E w M z E 1 O F o X D T I 2 M D g x M j E w M z E 1 O F o w E z E R 
+ M A 8 G A 1 U E A x M I Q 2 h h b m d l T W U w g g E i M A 0 G C S q G S I b 3 D Q E B A Q U A A 4 I B D w A w g g E K A o I B 
+ A Q D U W v 1 l y U 1 G U 4 p c 5 p S 2 8 2 J H k c V T f R 6 B L E M s Y 4 S T B l 3 Y B d n M l n G S U + k c j W C A m E B k 
+ 2 A w 5 c T u C x 5 E + 8 p L 4 O q f U g D L 1 d h D G c 5 9 x c S Q 5 S J A B G x 2 Y t 4 v n P P b 4 6 E X m f Y I G H t m a 
+ 1 A w l K e s W m c 9 J c S y N k / U 6 U K N k k L P m g y t A c e E r 5 t S E Q q j c 8 6 l Z 7 d K G U m G w 8 9 A c a m j R 
+ p 2 6 E j B o 7 I q c N 2 W k o o Y O w 0 u j P 1 S L P a S r G g 4 F 8 B j E x j r e l e e k z N t Z q H T q h O 2 B D J Z n 9 
+ g M y F J 7 / T f + G Z C U o 7 o m p q t + 8 I Z 8 T M t z k 2 R M 2 S w q r 1 G p u y R p O V j h a H O q e L I G C Q l + C x 
+ c n A E w 4 p H x Y Z B f 8 2 T m p G L x c w t A g M B A A G j g Y E w f z A d B g N V H Q 4 E F g Q U y 5 y C T X U c 1 q u m 
+ X n p Z s j t 6 1 l S 3 6 o Y w Q w Y D V R 0 j B D w w O o A U y 5 y C T X U c 1 q u m X n p Z s j t 6 1 l S 3 6 o a h F 6 Q V 
+ M B M x E T A P B g N V B A M T C E N o Y W 5 n Z U 1 l g g k A w J P r f J P T F C A w D A Y D V R 0 T B A U w A w E B / z A L 
+ B g N V H Q 8 E B A M C A Q Y w D Q Y J K o Z I h v c N A Q E L B Q A D g g E B A I G r l 6 1 y X 3 U g O j I 7 7 R n j L b C V 
+ m t z k E 6 J 6 P 8 2 R o B b g C J 4 1 h G l 1 t J J Q K x 7 I T + o Q o 6 J D R C w s N e 4 j c a m e b m N J C J U R b Z y 3 
+ E I O 5 b O 1 D k O 2 z p q V c 7 G O J D L U B b z Y y 8 3 U S 0 i R H L F t V + 6 f T C N o + L 8 5 M 4 D 5 k e U f q B L S V 
+ B a w S h r V a s 1 g z z L 8 T C h 8 j i h V n l t y 4 X 5 S G w C 2 Y A g c F h a l i H m E A V T Y E 2 d O u h a Q M h n C z 
+ O k V D q i Y Y c m e N / 6 r 7 f O s / e 4 g V 5 i a Y X K G N N 1 V p h G R b G p W O I / Y q h 0 h U u l h e n T z 1 k f B 9 
+ k O K X g P s Z 2 r q K 0 X s 8 P x 0 x t L H 1 7 6 x X r m 4 4 l s q S P u j G 5 u e T S m + G 8 W J t Y X W S z t U F 4 Q w = 
+ - - - - - E N D   C E R T I F I C A T E - - - - - 
+EOF7
+ cat <<'EOF9'> /etc/openvpn/client.crt
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            3b:80:8e:a6:3a:d9:39:e4:ff:e0:0f:04:0f:bb:ad:dd
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN=vpn.f5labs.dev
+        Validity
+            Not Before: Jan 14 02:53:35 2021 GMT
+            Not After : Apr 19 02:53:35 2023 GMT
+        Subject: CN=client.f5labs.dev
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                RSA Public-Key: (2048 bit)
+                Modulus:
+                    00:d0:db:2a:46:68:84:d4:9c:0a:a3:33:40:37:f2:
+                    f4:60:dd:7a:e5:5d:c0:c2:49:35:bb:9c:18:98:8c:
+                    79:41:42:d9:2d:c4:e7:83:95:ef:65:ae:9c:a5:80:
+                    3b:be:22:85:7a:38:81:70:64:0d:49:88:77:87:6a:
+                    9d:12:6c:17:28:84:55:97:b4:f7:b3:fd:ec:dc:b8:
+                    16:43:01:3c:06:f3:3b:f7:c6:c0:00:8b:c8:bd:03:
+                    1f:cf:ef:3b:fa:a7:7e:4f:3a:ec:15:e3:b5:b7:ed:
+                    3f:38:9f:3d:8c:4f:02:4e:d8:b6:85:1d:2c:f1:37:
+                    f8:b6:3d:08:14:6f:57:5d:17:3f:40:4b:e3:05:0d:
+                    39:34:7f:4e:b4:e7:0c:e1:95:56:ae:2b:7b:ab:d4:
+                    26:69:5e:27:c3:81:58:cb:79:40:5e:d5:70:52:97:
+                    fd:8d:8f:89:3f:61:a1:ff:5f:54:05:e9:6c:54:e4:
+                    f4:ca:ac:d4:3a:fa:78:dd:27:e8:68:c4:3c:89:54:
+                    3d:92:7d:f8:aa:64:d3:3b:e0:b5:c1:95:10:58:78:
+                    87:8f:c3:4c:37:3d:a0:76:36:a8:22:00:f2:c2:fc:
+                    19:6e:7f:18:41:fe:70:71:e3:c5:ef:96:da:d9:b8:
+                    80:5f:1b:98:4f:81:f0:c0:4c:9f:38:d1:bf:1e:07:
+                    7e:e7
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            X509v3 Subject Key Identifier: 
+                FC:2C:7A:13:E6:8B:6E:2E:6B:B3:D9:47:4C:A6:4E:18:11:EA:26:4B
+            X509v3 Authority Key Identifier: 
+                keyid:FC:66:B7:57:58:8F:93:B2:3A:61:1E:43:78:D4:2E:43:EF:5E:E4:35
+                DirName:/CN=vpn.f5labs.dev
+                serial:51:9C:76:87:21:63:D4:D3:FF:1E:54:B2:7B:8D:DF:13:1E:F5:6A:AC
+
+            X509v3 Extended Key Usage: 
+                TLS Web Client Authentication
+            X509v3 Key Usage: 
+                Digital Signature
+    Signature Algorithm: sha256WithRSAEncryption
+         57:33:02:49:cb:42:0f:82:7a:d8:bb:54:d8:36:d1:ad:4d:a0:
+         8f:5a:3f:7d:49:0f:4b:2f:22:bd:08:5c:9e:78:79:e9:8c:0e:
+         1a:d9:54:08:58:98:23:b6:0b:53:7d:f8:4c:fe:63:63:3d:74:
+         74:d8:3f:84:f4:91:4a:65:11:41:cd:6b:1b:ea:d2:50:df:f0:
+         c3:d5:07:88:c2:7d:45:fb:9a:59:56:02:c5:17:f5:13:86:e2:
+         a8:db:1c:61:33:f3:53:26:51:a6:a2:9e:9d:4a:71:b1:01:bd:
+         0e:70:2a:a1:5d:7c:37:eb:81:40:f3:0b:c6:ce:be:39:83:2b:
+         53:d0:0f:54:51:90:31:3c:9e:ba:ec:d9:46:6c:98:ab:b9:ca:
+         7c:56:71:c6:74:0b:b5:30:98:8d:e7:eb:e4:0d:cf:f4:43:28:
+         09:63:f5:12:67:4a:1d:0f:cf:61:4d:c7:2e:6e:21:9f:09:62:
+         06:1f:16:8b:a0:8d:2f:fa:a5:16:52:41:57:29:ac:99:4e:a4:
+         4a:0f:76:4a:80:9b:88:1f:05:e9:9b:90:da:75:f3:bc:fa:c5:
+         86:b2:70:95:05:24:74:50:b2:3a:ab:f7:05:84:22:93:11:d5:
+         c9:00:48:4c:40:84:d4:7b:30:17:35:9b:02:d9:a3:79:c6:ab:
+         16:fe:b4:de
+-----BEGIN CERTIFICATE-----
+MIIDZTCCAk2gAwIBAgIQO4COpjrZOeT/4A8ED7ut3TANBgkqhkiG9w0BAQsFADAZ
+MRcwFQYDVQQDDA52cG4uZjVsYWJzLmRldjAeFw0yMTAxMTQwMjUzMzVaFw0yMzA0
+MTkwMjUzMzVaMBwxGjAYBgNVBAMMEWNsaWVudC5mNWxhYnMuZGV2MIIBIjANBgkq
+hkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0NsqRmiE1JwKozNAN/L0YN165V3Awkk1
+u5wYmIx5QULZLcTng5XvZa6cpYA7viKFejiBcGQNSYh3h2qdEmwXKIRVl7T3s/3s
+3LgWQwE8BvM798bAAIvIvQMfz+87+qd+TzrsFeO1t+0/OJ89jE8CTti2hR0s8Tf4
+tj0IFG9XXRc/QEvjBQ05NH9OtOcM4ZVWrit7q9QmaV4nw4FYy3lAXtVwUpf9jY+J
+P2Gh/19UBelsVOT0yqzUOvp43SfoaMQ8iVQ9kn34qmTTO+C1wZUQWHiHj8NMNz2g
+djaoIgDywvwZbn8YQf5wcePF75ba2biAXxuYT4HwwEyfONG/Hgd+5wIDAQABo4Gl
+MIGiMAkGA1UdEwQCMAAwHQYDVR0OBBYEFPwsehPmi24ua7PZR0ymThgR6iZLMFQG
+A1UdIwRNMEuAFPxmt1dYj5OyOmEeQ3jULkPvXuQ1oR2kGzAZMRcwFQYDVQQDDA52
+cG4uZjVsYWJzLmRldoIUUZx2hyFj1NP/HlSye43fEx71aqwwEwYDVR0lBAwwCgYI
+KwYBBQUHAwIwCwYDVR0PBAQDAgeAMA0GCSqGSIb3DQEBCwUAA4IBAQBXMwJJy0IP
+gnrYu1TYNtGtTaCPWj99SQ9LLyK9CFyeeHnpjA4a2VQIWJgjtgtTffhM/mNjPXR0
+2D+E9JFKZRFBzWsb6tJQ3/DD1QeIwn1F+5pZVgLFF/UThuKo2xxhM/NTJlGmop6d
+SnGxAb0OcCqhXXw364FA8wvGzr45gytT0A9UUZAxPJ667NlGbJirucp8VnHGdAu1
+MJiN5+vkDc/0QygJY/USZ0odD89hTccubiGfCWIGHxaLoI0v+qUWUkFXKayZTqRK
+D3ZKgJuIHwXpm5DadfO8+sWGsnCVBSR0ULI6q/cFhCKTEdXJAEhMQITUezAXNZsC
+2aN5xqsW/rTe
+-----END CERTIFICATE-----
+EOF9
+ cat <<'EOF10'> /etc/openvpn/client.key
+-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDQ2ypGaITUnAqj
+M0A38vRg3XrlXcDCSTW7nBiYjHlBQtktxOeDle9lrpylgDu+IoV6OIFwZA1JiHeH
+ap0SbBcohFWXtPez/ezcuBZDATwG8zv3xsAAi8i9Ax/P7zv6p35POuwV47W37T84
+nz2MTwJO2LaFHSzxN/i2PQgUb1ddFz9AS+MFDTk0f0605wzhlVauK3ur1CZpXifD
+gVjLeUBe1XBSl/2Nj4k/YaH/X1QF6WxU5PTKrNQ6+njdJ+hoxDyJVD2SffiqZNM7
+4LXBlRBYeIePw0w3PaB2NqgiAPLC/BlufxhB/nBx48XvltrZuIBfG5hPgfDATJ84
+0b8eB37nAgMBAAECggEBALNUe+gYtnUXxsp6pxljMxI5Gdz3sxsfYVPFpBjYBQVU
+MMZr253Qj83vL/GrOaD4Y0OeYQXv4rjQxFEx6cx3oyrW9eddK5MQ5OBf8D14QeJ1
+13fY3+OYIrSoihgwgn+mcX32SeBBtTZIL5CeqmpfLMwmqBGEC6LTPGq93MIvGASE
+84Lf28gVk69nPdj3ZHw7zjG5Rb5gmnVnj8HeiYKixFG7Ev0ttdczZ9g+XmEoCLDo
+XQFUjgrllrJSJpV1GK1N4fntrDSrZ+GyM2R9dNcpgSEZ077QdIljjqHcfHgABjkB
+Asbcjb0cQy9aIE3BwOkh39FPM71pcnRcXVlJsuGTIgECgYEA9ySHXI52hfqmMt1B
+u/grY0LUb+mUrLh2GKAOPTzzN2zTzvBy6b7DvKbTmsOTiMVQ2j3rVIw/qLrIm4wg
+TNoCIBBkM/gJ4MtbaR0tWhE8CIG//OiN+bVSIuojZ+6csNo4EgpXRhosaX5n9gw6
+JWpCGGELKYkzBoqXMxALxYTDh1cCgYEA2Fdd5f/c9gYeMsUiKUxCq4PDZS6aNBO+
+w5zxWGc7+gDJDTg3Cue4g65KYHm16ZCWLZittaV6xjcAU8hsgIq5mR/9nwd1DiFy
+kmot5JWkQc23yqseq2lHwDKRCc6Fh77zpvt80WI5iD6v7kc4P1JViZtLJpVC1Rxi
+JMzO8gzT2vECgYAQARmS8NbUDks89/8NwSBuKSHArYunM7rSFWtWo9/MMwv0VrXa
+VTQvv03ss8WWEdEOkPvwWbS1pILhL83XrDZ/BRC4HNPm7sRYpj8NmhgdJOnd4uFu
+zkMnZ6orTNRwz3DaGjlUnNVLb5gj4t7RFXR6R66FXhEj1027TMq2W8aduQKBgQCw
+VR2ivxaxrLDmfslmUdMxixczHHXxpnphZEVO4e3/yq4UyVIL4G0DX4cd9XYxZnkR
+txU3LibQ8rmgkIbniqrWRT3qZiChoN+KuWKootOcEvoQBcPcwNYLsOuIy70ItLpR
+yz+kRmRQSZAKLiCJdClmHJ53V0d+/kB8cDbpEU2IcQKBgCZCfKbUevhQ37iN1AJZ
+tNDQjCed/MMhcBQBCkWXin5lxgyctIPgZiNlk2w7nooNWFAYymKJ6HuAtetOYssS
+i0AXVmVVagNwIw7b5Q5Z2jGBQ0W5H1s6qQ832zTlokWuwVpzq2HpGPIq0P5z4Omb
+UG4rLe+2IINXbG3ry8s254N5
+-----END PRIVATE KEY-----
+EOF10
+ cat <<'EOF18'> /etc/openvpn/tls-auth.key
+#  2 0 4 8   b i t   O p e n V P N   s t a t i c   k e y 
+ # 
+ - - - - - B E G I N   O p e n V P N   S t a t i c   k e y   V 1 - - - - - 
+ a 6 a c 1 9 8 4 8 e 9 3 4 1 9 2 f 3 6 0 f e 6 3 d b e f 8 a 1 1 
+ 5 8 a 6 c c 0 4 1 c 8 0 a d 1 1 7 7 0 0 5 2 9 c e 0 d 5 9 3 7 2 
+ a 8 0 3 d 7 6 9 d c f 2 9 2 4 0 e 5 4 1 6 a f 5 a d b 4 4 b 9 4 
+ 0 4 f c 1 2 c 3 d 4 4 f c 0 7 7 6 8 e 5 b c 7 d d 4 1 8 1 2 3 9 
+ 9 6 a 8 9 0 8 a b 5 5 d e 0 a f 2 1 f 7 c 0 8 7 c 6 7 f 8 2 0 a 
+ 1 6 7 0 9 7 5 c 3 4 9 e 8 b 6 8 d b 5 c 8 3 b 7 7 b 8 3 d 6 c c 
+ f e 3 1 2 5 0 e 9 b 4 7 2 2 9 f e 1 a 0 3 6 1 2 c 9 9 b d b b 2 
+ 4 b b 9 5 9 c 3 4 2 6 8 5 9 1 9 1 3 6 a c 7 2 b 6 9 7 c 9 6 0 2 
+ 2 4 0 4 f 8 b 2 2 8 6 7 7 d b a 6 0 6 5 a 0 e 0 6 4 b 7 a 7 e e 
+ 1 f b 4 5 f 6 3 e 5 8 f 4 f 8 b 0 0 f d 5 7 0 d 4 e 9 a 1 3 1 e 
+ 4 2 9 5 3 2 c 6 e b 3 e a a 4 a 2 5 2 3 2 f a 1 b f f 2 5 a 3 d 
+ e b c 9 a 0 6 c c b 0 9 6 5 5 3 3 8 4 9 a 0 7 2 b 2 f 7 d d a a 
+ 6 e 1 c 0 c 8 6 1 2 e 3 d 7 5 4 5 9 4 6 d a 3 5 7 d 0 7 b 7 5 5 
+ 7 a 2 9 0 d f b 4 3 9 4 e 8 3 0 e f 8 7 c 0 4 a 7 c e f 7 2 a 2 
+ f 9 a 3 d 2 1 1 4 c 3 7 6 3 2 4 2 2 1 3 5 0 2 b 8 6 2 b 9 3 4 b 
+ 2 1 7 1 7 c 8 f e 0 e b 0 2 4 7 6 8 7 0 a f f 8 0 8 9 f c e f 4 
+ - - - - - E N D   O p e n V P N   S t a t i c   k e y   V 1 - - - - - 
+EOF18
+ cat <<'EOF107'> /etc/openvpn/server.crt
+Ce r t i f i c a t e : 
+         D a t a : 
+                 V e r s i o n :   3   ( 0 x 2 ) 
+                 S e r i a l   N u m b e r :   1   ( 0 x 1 ) 
+         S i g n a t u r e   A l g o r i t h m :   s h a 2 5 6 W i t h R S A E n c r y p t i o n 
+                 I s s u e r :   C N = C h a n g e M e 
+                 V a l i d i t y 
+                         N o t   B e f o r e :   A u g   1 4   1 0 : 3 3 : 1 6   2 0 1 6   G M T 
+                         N o t   A f t e r   :   A u g   1 2   1 0 : 3 3 : 1 6   2 0 2 6   G M T 
+                 S u b j e c t :   C N = s e r v e r 
+                 S u b j e c t   P u b l i c   K e y   I n f o : 
+                         P u b l i c   K e y   A l g o r i t h m :   r s a E n c r y p t i o n 
+                                 P u b l i c - K e y :   ( 2 0 4 8   b i t ) 
+                                 M o d u l u s : 
+                                         0 0 : c f : 0 2 : 4 0 : c 3 : f c : 0 7 : c 7 : 5 9 : 1 a : d e : 1 f : 2 2 : d 9 : a 4 : 
+                                         7 8 : f e : 7 0 : d 8 : e a : 5 9 : 3 4 : 1 2 : 6 d : 6 4 : 3 a : c 8 : d d : d 9 : b b : 
+                                         e c : 0 f : 2 4 : b d : 5 f : a 4 : 8 5 : 2 0 : 4 2 : 5 e : 1 f : 4 b : f b : 9 f : 3 a : 
+                                         f a : 1 b : 2 f : a c : b c : 0 2 : f 9 : a f : e a : 8 1 : f b : 4 2 : 6 e : 4 a : 6 d : 
+                                         5 d : 7 e : 1 1 : 8 3 : a b : 2 8 : 0 9 : 6 7 : d 8 : a c : 3 8 : 4 f : 3 1 : 1 c : 9 4 : 
+                                         5 5 : 2 c : a 2 : 5 9 : 2 2 : 5 2 : a d : 1 4 : a 5 : d 4 : c d : 8 1 : b 5 : 0 b : 5 5 : 
+                                         c 9 : f 8 : a 7 : 0 f : 9 b : a 5 : 1 a : 6 c : 9 e : 9 3 : 9 c : 8 b : b f : 3 3 : f b : 
+                                         9 6 : f d : d 1 : a 3 : 6 0 : a 0 : 3 b : e 0 : 7 e : 2 6 : 6 2 : 7 2 : 2 e : a 7 : 8 f : 
+                                         2 8 : 4 f : 9 4 : 8 d : 3 9 : 3 7 : 7 7 : 8 a : 9 2 : a 7 : 3 5 : 1 3 : 0 8 : e 1 : e 8 : 
+                                         d 4 : 4 f : 3 b : 7 f : 7 d : 0 6 : 0 0 : f b : 2 a : 9 e : 5 9 : a 1 : 5 9 : 5 6 : d e : 
+                                         0 d : f 5 : 6 5 : 1 6 : 1 b : 3 5 : f 2 : 1 e : 1 c : 9 d : 6 d : 0 9 : f 4 : 1 a : a d : 
+                                         c c : 0 7 : 5 0 : 6 1 : 1 5 : 4 4 : 8 e : c 3 : c 4 : d a : a 3 : d d : 0 6 : 8 5 : 8 a : 
+                                         9 e : e 6 : 2 4 : 6 3 : 0 3 : 9 0 : 4 2 : 1 e : 7 5 : 3 4 : b 3 : 5 0 : a 2 : e 7 : 5 8 : 
+                                         1 4 : 8 b : c 4 : f 4 : d 7 : 8 5 : 4 1 : f c : 3 7 : 5 0 : 1 3 : d d : 4 6 : e 2 : 0 c : 
+                                         1 c : 5 6 : 2 2 : 4 a : f 8 : 9 0 : f 1 : 5 8 : 9 2 : 8 a : 0 3 : 5 e : 3 7 : 6 4 : 3 6 : 
+                                         3 6 : e 4 : d 1 : 4 1 : d 1 : c c : a b : e 7 : 3 3 : f 2 : 0 d : 7 d : d 9 : c d : 1 d : 
+                                         6 1 : b b : a 2 : 0 c : 4 8 : 3 9 : 6 f : b f : f 2 : f 8 : 1 9 : d c : d b : 8 0 : 7 f : 
+                                         a b : 6 3 
+                                 E x p o n e n t :   6 5 5 3 7   ( 0 x 1 0 0 0 1 ) 
+                 X 5 0 9 v 3   e x t e n s i o n s : 
+                         X 5 0 9 v 3   B a s i c   C o n s t r a i n t s :   
+                                 C A : F A L S E 
+                         X 5 0 9 v 3   S u b j e c t   K e y   I d e n t i f i e r :   
+                                 5 1 : 9 7 : 1 8 : 0 C : 9 D : 4 B : 7 5 : E E : D 5 : 7 6 : 1 1 : E 3 : E 4 : 0 6 : D 9 : 6 5 : F 8 : 9 6 : D 4 : C 1 
+                         X 5 0 9 v 3   A u t h o r i t y   K e y   I d e n t i f i e r :   
+                                 k e y i d : C B : 9 C : 8 2 : 4 D : 7 5 : 1 C : D 6 : A B : A 6 : 5 E : 7 A : 5 9 : B 2 : 3 B : 7 A : D 6 : 5 4 : B 7 : E A : 8 6 
+                                 D i r N a m e : / C N = C h a n g e M e 
+                                 s e r i a l : C 0 : 9 3 : E B : 7 C : 9 3 : D 3 : 1 4 : 2 0 
+ 
+                         X 5 0 9 v 3   E x t e n d e d   K e y   U s a g e :   
+                                 T L S   W e b   S e r v e r   A u t h e n t i c a t i o n 
+                         X 5 0 9 v 3   K e y   U s a g e :   
+                                 D i g i t a l   S i g n a t u r e ,   K e y   E n c i p h e r m e n t 
+         S i g n a t u r e   A l g o r i t h m :   s h a 2 5 6 W i t h R S A E n c r y p t i o n 
+                   6 b : 0 1 : e a : f c : 6 c : a d : 4 6 : 4 d : a e : 9 f : b 8 : 9 1 : 1 5 : 0 7 : a c : e a : e 1 : d 8 : 
+                   3 c : 0 5 : 3 c : b 1 : 1 8 : b b : 5 6 : f 9 : 8 a : a 3 : 6 2 : 5 b : e e : 7 a : b 7 : d 8 : 6 d : d 5 : 
+                   5 a : 7 f : f 4 : 6 c : b 3 : 8 e : a 0 : b 6 : b e : 4 d : 8 e : 3 6 : 1 6 : 4 a : f 8 : b 9 : b 8 : 4 3 : 
+                   1 3 : 1 c : 0 7 : 3 9 : 7 c : 3 4 : 1 8 : 6 1 : 8 0 : b f : a a : a 5 : 8 6 : 6 5 : 3 8 : d 8 : a c : 2 8 : 
+                   4 0 : 8 6 : d 3 : f 5 : 0 8 : c d : 4 9 : d 8 : 3 2 : 1 1 : 2 4 : 1 2 : e 6 : d d : 8 d : 8 f : c c : 7 2 : 
+                   f c : d 5 : 0 3 : 9 a : 2 4 : 7 d : 1 2 : d 0 : f d : a 1 : 3 6 : 0 5 : c c : 3 4 : e 4 : 6 8 : 2 e : f 5 : 
+                   d 9 : a 8 : 5 2 : f d : e 4 : f f : 0 6 : 7 5 : d a : 3 5 : 3 5 : 4 5 : 6 5 : 8 4 : d 1 : 3 9 : e 1 : 2 3 : 
+                   d 8 : d 2 : 0 2 : 7 0 : 2 7 : a c : 2 3 : b 2 : d 3 : e c : 5 7 : 4 c : d 0 : b a : 5 1 : 3 2 : f 1 : 2 4 : 
+                   6 9 : b 8 : 7 e : 0 f : 7 0 : 6 c : 5 a : 8 6 : c e : 1 8 : 1 7 : a 9 : 5 3 : 8 5 : c f : 1 3 : b 8 : 7 f : 
+                   0 3 : 0 6 : 8 a : 1 f : a 0 : 7 b : a 5 : 5 e : 6 5 : a 8 : 7 f : e 9 : c 1 : b 1 : b f : 7 8 : 3 d : f 3 : 
+                   8 2 : 5 7 : f 6 : 6 4 : 2 7 : 0 6 : 5 4 : 4 c : a a : 3 d : 2 7 : 9 c : 4 c : 3 1 : f b : b e : b 1 : d 8 : 
+                   b 8 : 4 f : d d : a 7 : 3 d : e c : b 2 : 7 6 : d 0 : f 0 : 5 9 : 8 4 : c d : b 9 : e f : d 7 : 4 d : 5 e : 
+                   4 c : 1 9 : 9 7 : 4 7 : 7 9 : 7 d : c f : 3 4 : b f : 7 6 : b e : 0 1 : d c : 9 3 : e 6 : 5 f : c 6 : f e : 
+                   0 9 : b 6 : e 4 : d c : 7 1 : c 1 : 4 1 : a 7 : 3 c : a 7 : 6 5 : 8 0 : a 7 : f f : f 1 : 4 1 : 0 4 : 2 0 : 
+                   2 f : e d : 2 5 : 1 d 
+ - - - - - B E G I N   C E R T I F I C A T E - - - - - 
+ M I I D N D C C A h y g A w I B A g I B A T A N B g k q h k i G 9 w 0 B A Q s F A D A T M R E w D w Y D V Q Q D E w h D a G F u 
+ Z 2 V N Z T A e F w 0 x N j A 4 M T Q x M D M z M T Z a F w 0 y N j A 4 M T I x M D M z M T Z a M B E x D z A N B g N V B A M T 
+ B n N l c n Z l c j C C A S I w D Q Y J K o Z I h v c N A Q E B B Q A D g g E P A D C C A Q o C g g E B A M 8 C Q M P 8 B 8 d Z 
+ G t 4 f I t m k e P 5 w 2 O p Z N B J t Z D r I 3 d m 7 7 A 8 k v V + k h S B C X h 9 L + 5 8 6 + h s v r L w C + a / q g f t C 
+ b k p t X X 4 R g 6 s o C W f Y r D h P M R y U V S y i W S J S r R S l 1 M 2 B t Q t V y f i n D 5 u l G m y e k 5 y L v z P 7 
+ l v 3 R o 2 C g O + B + J m J y L q e P K E + U j T k 3 d 4 q S p z U T C O H o 1 E 8 7 f 3 0 G A P s q n l m h W V b e D f V l 
+ F h s 1 8 h 4 c n W 0 J 9 B q t z A d Q Y R V E j s P E 2 q P d B o W K n u Y k Y w O Q Q h 5 1 N L N Q o u d Y F I v E 9 N e F 
+ Q f w 3 U B P d R u I M H F Y i S v i Q 8 V i S i g N e N 2 Q 2 N u T R Q d H M q + c z 8 g 1 9 2 c 0 d Y b u i D E g 5 b 7 / y 
+ + B n c 2 4 B / q 2 M C A w E A A a O B l D C B k T A J B g N V H R M E A j A A M B 0 G A 1 U d D g Q W B B R R l x g M n U t 1 
+ 7 t V 2 E e P k B t l l + J b U w T B D B g N V H S M E P D A 6 g B T L n I J N d R z W q 6 Z e e l m y O 3 r W V L f q h q E X 
+ p B U w E z E R M A 8 G A 1 U E A x M I Q 2 h h b m d l T W W C C Q D A k + t 8 k 9 M U I D A T B g N V H S U E D D A K B g g r 
+ B g E F B Q c D A T A L B g N V H Q 8 E B A M C B a A w D Q Y J K o Z I h v c N A Q E L B Q A D g g E B A G s B 6 v x s r U Z N 
+ r p + 4 k R U H r O r h 2 D w F P L E Y u 1 b 5 i q N i W + 5 6 t 9 h t 1 V p / 9 G y z j q C 2 v k 2 O N h Z K + L m 4 Q x M c 
+ B z l 8 N B h h g L + q p Y Z l O N i s K E C G 0 / U I z U n Y M h E k E u b d j Y / M c v z V A 5 o k f R L Q / a E 2 B c w 0 
+ 5 G g u 9 d m o U v 3 k / w Z 1 2 j U 1 R W W E 0 T n h I 9 j S A n A n r C O y 0 + x X T N C 6 U T L x J G m 4 f g 9 w b F q G 
+ z h g X q V O F z x O 4 f w M G i h + g e 6 V e Z a h / 6 c G x v 3 g 9 8 4 J X 9 m Q n B l R M q j 0 n n E w x + 7 6 x 2 L h P 
+ 3 a c 9 7 L J 2 0 P B Z h M 2 5 7 9 d N X k w Z l 0 d 5 f c 8 0 v 3 a + A d y T 5 l / G / g m 2 5 N x x w U G n P K d l g K f / 
+ 8 U E E I C / t J R 0 = 
+ - - - - - E N D   C E R T I F I C A T E - - - - - 
+EOF107
+ cat <<'EOF113'> /etc/openvpn/server.key
+-- - - - B E G I N   P R I V A T E   K E Y - - - - - 
+ M I I E v Q I B A D A N B g k q h k i G 9 w 0 B A Q E F A A S C B K c w g g S j A g E A A o I B A Q D P A k D D / A f H W R r e 
+ H y L Z p H j + c N j q W T Q S b W Q 6 y N 3 Z u + w P J L 1 f p I U g Q l 4 f S / u f O v o b L 6 y 8 A v m v 6 o H 7 Q m 5 K 
+ b V 1 + E Y O r K A l n 2 K w 4 T z E c l F U s o l k i U q 0 U p d T N g b U L V c n 4 p w + b p R p s n p O c i 7 8 z + 5 b 9 
+ 0 a N g o D v g f i Z i c i 6 n j y h P l I 0 5 N 3 e K k q c 1 E w j h 6 N R P O 3 9 9 B g D 7 K p 5 Z o V l W 3 g 3 1 Z R Y b 
+ N f I e H J 1 t C f Q a r c w H U G E V R I 7 D x N q j 3 Q a F i p 7 m J G M D k E I e d T S z U K L n W B S L x P T X h U H 8 
+ N 1 A T 3 U b i D B x W I k r 4 k P F Y k o o D X j d k N j b k 0 U H R z K v n M / I N f d n N H W G 7 o g x I O W + / 8 v g Z 
+ 3 N u A f 6 t j A g M B A A E C g g E A R V 7 R 6 V t q F + n K U S l J + n l d e p b C e j Y O d y Z l c j W h 8 r d A 8 g o z 
+ 0 / t E C X 1 0 I T T L S 5 7 t 9 X J S h m b Q 2 Z z S l i q 6 3 w I r V H X 2 E 8 N E 8 6 H u h K g 1 I w i q S l z V V e U y 
+ z z q L R 5 r x 2 q y T F F q X p m b 7 p e 6 2 N L 2 4 A 2 m K P e C k y V q o 9 i A Q K O l u r Q Q S V C j J 8 q S d 0 L e e 
+ J l 3 / h g s b + A c f v W y 5 W R Y + c J n p v J b K 3 t m o t n 9 I G S V V d e h G d I 4 8 U g O 1 H R J T 3 Y 7 e i w h G 
+ p 6 s F L Y Q J / O X H H W R Z r x i E + o v K K S D 3 X P / p 6 n B Y 9 / 0 0 k D 7 a v o i E b X y 4 F h i b a O 8 N a 2 s 3 
+ b a N O b C e F s J C U 3 / Y s M N Z y e B H F y a f R a Y 1 e r y O n 9 N J 3 0 Q K B g Q D t v F A T L T Q x J m h g M b 3 W 
+ d c 2 G D C l 6 m a d i c C K h y Y Y i L w / i c L y V t F 3 8 b D h f l F p l R E a P a W d L F f L e K A G h J H G U X 0 2 1 
+ q f x q T r 9 F y M B / 0 X U a O O b S v / G M B O i B P 8 i g B U 6 W l F k g o 7 B q Y v Q e n c l s 6 u W 3 k o J D E 4 Z n 
+ v m T i V K q e / D F d 1 J w L T Y T l + 2 e 2 H Q K B g Q D e 6 Z 4 4 Q 5 V l 1 U I Y R T 0 J a z A b O u 4 o A Y m r q i J z 
+ Y n 7 Z F z 9 5 y b d S d C b R B m c 1 1 Q j U w b G U z i l W 0 V M c D b B X y V k l x Y x b 6 Q P K V i V a f T p 9 r F b + 
+ K x / F t f M v A / w 9 7 4 r w s + G Q Y H u y O 3 H z x N j H u J p a Z g F Y t z A 1 r C 6 m I I B G W W s 5 a L A T B b i C 
+ q + l H j Y E v f w K B g A c q / l 8 V p d U 1 i 0 A b P 9 Y P h z r b c w S 3 T U y y h N j L 8 r d l I 9 1 3 + L e q 0 I q j 
+ 2 K 9 J E d C r 1 l T M o M i q y L / a B P K O 3 r 3 S g c 1 Q a s P p y + q W u v c f o a B A x v T j x K y s G T a M b c g l 
+ Y N E 5 d 9 Z 8 G P 2 c L j A e I c y e 6 H 4 4 d K U B G b R X E U O h u e N B R 1 v E 5 U + R 7 s f g Z K g h A o G B A J J j 
+ u 7 t Z b u B 8 Z 7 a G q e n o k a Q g V E z D j c T F q 3 A 5 K / K n m N E D T r g A f Y l h + h / Z M r 5 + I Y A G 0 B E q 
+ 0 L i o q L l O C p S K o n 2 t j g a w A k H l 4 a a s q k i q y 2 f M 8 N J c f K e 0 C 3 u 9 t h F Z u 4 I 2 F c S v 7 m l i 
+ 6 0 M Y o C P B 0 h A 9 b j k 9 O O B 6 U r d V 7 + P e K u j t u v p 5 j H B D A o G A Y q z v A U 3 v Y f V l 9 K k s c f q 9 
+ z e u 2 k S k g e O d / a t D 6 d e 8 M r E A + Q p / H c 4 5 W 1 3 G w F N u F + V 0 0 d U B J V / h 9 s X p D S M X l l 7 Q O 
+ x m 7 5 I s E S E V T y p M e 2 w Q v R e w 3 2 0 Z q 7 A j h S m q Z t 7 w B m A V / j r D D 3 + z P h k f J Q J C G j j 5 p a 
+ S i n d 6 P d h h X c s Z k A s + H I L U d Y = 
+ - - - - - E N D   P R I V A T E   K E Y - - - - - 
+EOF113
+ cat <<'EOF13'> /etc/openvpn/dh.pem
+-- - - - B E G I N   D H   P A R A M E T E R S - - - - - 
+ M I I B C A K C A Q E A p 0 R g Q f X 3 l S J C t L 2 X Q 9 q f D + 2 X I J Q g U I X L D p Q k q 6 Q v m S v 8 W H I x D I H w 
+ g D V / p P r y n P k + j Y C 9 T I T C 6 D E P c h I 0 4 R X F 9 P C P D F 7 p f w D A N g t m 1 h 8 x m Q W u L s b v l S s U 
+ 3 / T F t v Y r M g P D / B y K m 6 j l e 0 v l l g C F l d S K V z t D 3 o 2 s a 8 q H 5 C 3 p j b D t V t m 1 I T U s 1 o M N 
+ R j S A v t B / Y J P 2 c 6 1 F 2 P F q L e Y w W w M l Q A s a h I a U I g Z j N y S U K J Q q O X 1 t E E 6 e Q L f l m q F y 
+ 6 m W x G a y n C s j / y O a S 9 / C C / O W o e a A K 5 y M C W l / J E I t n e Z r n z U J k q P W J M o N A 0 n y C d N g a 
+ w B H j 0 G 6 b z j L + 6 j B B J S j u R P p d + z g f 9 y e 0 Q w I B A g = = 
+ - - - - - E N D   D H   P A R A M E T E R S - - - - - 
+EOF13
+ cat <<'EOF103'> /etc/openvpn/crl.pem
+- - - - - B E G I N   X 5 0 9   C R L - - - - - 
+ M I I B p T C B j g I B A T A N B g k q h k i G 9 w 0 B A Q s F A D A T M R E w D w Y D V Q Q D E w h D a G F u Z 2 V N Z R c N 
+ M T Y w O D E 0 M T A z M z E 2 W h c N M T c w M j E w M T A z M z E 2 W q B H M E U w Q w Y D V R 0 j B D w w O o A U y 5 y C 
+ T X U c 1 q u m X n p Z s j t 6 1 l S 3 6 o a h F 6 Q V M B M x E T A P B g N V B A M T C E N o Y W 5 n Z U 1 l g g k A w J P r 
+ f J P T F C A w D Q Y J K o Z I h v c N A Q E L B Q A D g g E B A E Y g z 7 + T 9 Q U F 7 8 F V + k y g I y a V X u f H M O K Y 
+ v x U d h q X 3 M H 5 N S A F i X w 4 Q D X G A o X V + r p H W I v L K a + 9 5 / U J d j 4 3 e v U Q + i y N / / W U K c O w U 
+ f N o v e G 7 i z z 4 X U 2 + q G 7 + K J A J x h 0 v m D t B o v 3 2 0 u F Q 4 a G F f X 0 h p G w I d q 8 E R a L 2 S l Y 4 7 
+ F 9 l A z n t I A h F d 4 r b K + y m o f 1 y d X O T k O + 8 E W V B U e M F Y b P i Q y N A f q P 0 c 5 s Y O r g / K X X 5 y 
+ N b I 7 q z p 9 I 3 l q t B M 9 U G / + 3 a w o s N t t E C R F Z O t b X O 0 W 1 M t S a L l e 9 D t f M d y i X b p M + J l b 
+ R / j d 9 o q C p 8 N a S l e s f N B n S n 1 i / k R Y e / 9 n o O c 7 p D B B Q J A n f V 7 g Q J Y y I q A = 
+ - - - - - E N D   X 5 0 9   C R L - - - - - 
+EOF103
+
+ # Getting all dns inside resolv.conf then use as Default DNS for our openvpn server
+ #grep -v '#' /etc/resolv.conf | grep 'nameserver' | grep -E -o '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | while read -r line; do
+	#echo "push \"dhcp-option DNS $line\"" >> /etc/openvpn/server_tcp.conf
+#done
+ #grep -v '#' /etc/resolv.conf | grep 'nameserver' | grep -E -o '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | while read -r line; do
+	#echo "push \"dhcp-option DNS $line\"" >> /etc/openvpn/server_udp.conf
+#done
+
+ # setting openvpn server port
+ sed -i "s|MyOvpnPort1|$OpenVPN_Port1|g" /etc/openvpn/server_tcp.conf
+ sed -i "s|MyOvpnPort2|$OpenVPN_Port2|g" /etc/openvpn/server_udp.conf
+ 
+ # Generating openvpn dh.pem file using openssl
+ #openssl dhparam -out /etc/openvpn/dh.pem 1024
+ 
+ # Getting some OpenVPN plugins for unix authentication
+ wget -qO /etc/openvpn/b.zip 'https://raw.githubusercontent.com/GakodArmy/teli/main/openvpn_plugin64'
+ unzip -qq /etc/openvpn/b.zip -d /etc/openvpn
+ rm -f /etc/openvpn/b.zip
+ 
+ # Some workaround for OpenVZ machines for "Startup error" openvpn service
+ if [[ "$(hostnamectl | grep -i Virtualization | awk '{print $2}' | head -n1)" == 'openvz' ]]; then
+ sed -i 's|LimitNPROC|#LimitNPROC|g' /lib/systemd/system/openvpn*
+ systemctl daemon-reload
+fi
+
+ # Allow IPv4 Forwarding
+ echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/20-openvpn.conf && sysctl --system &> /dev/null && echo 1 > /proc/sys/net/ipv4/ip_forward
+
+ # Iptables Rule for OpenVPN server
+ #PUBLIC_INET="$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)"
+ #IPCIDR='10.200.0.0/16'
+ #iptables -I FORWARD -s $IPCIDR -j ACCEPT
+ #iptables -t nat -A POSTROUTING -o $PUBLIC_INET -j MASQUERADE
+ #iptables -t nat -A POSTROUTING -s $IPCIDR -o $PUBLIC_INET -j MASQUERADE
+ 
+ # Installing Firewalld
+ apt install firewalld -y
+ systemctl start firewalld
+ systemctl enable firewalld
+ firewall-cmd --quiet --set-default-zone=public
+ firewall-cmd --quiet --zone=public --permanent --add-port=1-65534/tcp
+ firewall-cmd --quiet --zone=public --permanent --add-port=1-65534/udp
+ firewall-cmd --quiet --reload
+ firewall-cmd --quiet --add-masquerade
+ firewall-cmd --quiet --permanent --add-masquerade
+ firewall-cmd --quiet --permanent --add-service=ssh
+ firewall-cmd --quiet --permanent --add-service=openvpn
+ firewall-cmd --quiet --permanent --add-service=http
+ firewall-cmd --quiet --permanent --add-service=https
+ firewall-cmd --quiet --permanent --add-service=privoxy
+ firewall-cmd --quiet --permanent --add-service=squid
+ firewall-cmd --quiet --reload
+ 
+ # Enabling IPv4 Forwarding
+ echo 1 > /proc/sys/net/ipv4/ip_forward
+ 
+ # Starting OpenVPN server
+ systemctl start openvpn@server_tcp
+ systemctl start openvpn@server_udp
+ systemctl enable openvpn@server_tcp
+ systemctl enable openvpn@server_udp
+ systemctl restart openvpn@server_tcp
+ systemctl restart openvpn@server_udp
+ 
+ # Pulling OpenVPN no internet fixer script
+ #wget -qO /etc/openvpn/openvpn.bash "https://raw.githubusercontent.com/Bonveio/BonvScripts/master/openvpn.bash"
+ #0chmod +x /etc/openvpn/openvpn.bash
+}
+
+function InsProxy(){
+ # Removing Duplicate privoxy config
+ rm -rf /etc/privoxy/config*
+ 
+ # Creating Privoxy server config using cat eof tricks
+ cat <<'myPrivoxy' > /etc/privoxy/config
+# My Privoxy Server Config
+user-manual /usr/share/doc/privoxy/user-manual
+confdir /etc/privoxy
+logdir /var/log/privoxy
+filterfile default.filter
+logfile logfile
+listen-address 0.0.0.0:Privoxy_Port1
+listen-address 0.0.0.0:Privoxy_Port2
+toggle 1
+enable-remote-toggle 0
+enable-remote-http-toggle 0
+enable-edit-actions 0
+enforce-blocks 0
+buffer-limit 4096
+enable-proxy-authentication-forwarding 1
+forwarded-connect-retries 1
+accept-intercepted-requests 1
+allow-cgi-request-crunching 1
+split-large-forms 0
+keep-alive-timeout 5
+tolerate-pipelining 1
+socket-timeout 300
+permit-access 0.0.0.0/0 IP-ADDRESS
+myPrivoxy
+
+ # Setting machine's IP Address inside of our privoxy config(security that only allows this machine to use this proxy server)
+ sed -i "s|IP-ADDRESS|$IPADDR|g" /etc/privoxy/config
+ 
+ # Setting privoxy ports
+ sed -i "s|Privoxy_Port1|$Privoxy_Port1|g" /etc/privoxy/config
+ sed -i "s|Privoxy_Port2|$Privoxy_Port2|g" /etc/privoxy/config
+
+ # I'm setting Some Squid workarounds to prevent Privoxy's overflowing file descriptors that causing 50X error when clients trying to connect to your proxy server(thanks for this trick @homer_simpsons)
+ apt remove --purge squid -y
+ rm -rf /etc/squid/sq*
+ apt install squid -y
+ 
+# Squid Ports (must be 1024 or higher)
+ Proxy_Port1='8000'
+ Proxy_Port2='8080'
+ Proxy_Port3='3128'
+ Proxy_Port4='8888'
+ cat <<mySquid > /etc/squid/squid.conf
+acl VPN dst $(wget -4qO- http://ipinfo.io/ip)/32
+http_access allow VPN
+http_access deny all 
+http_port 0.0.0.0:$Proxy_Port1
+http_port 0.0.0.0:$Proxy_Port2
+http_port 0.0.0.0:$Proxy_Port3
+http_port 0.0.0.0:$Proxy_Port4
+acl all src 0.0.0.0/0
+http_access allow all
+forwarded_for off
+via off
+request_header_access Host allow all
+request_header_access Content-Length allow all
+request_header_access Content-Type allow all
+request_header_access All deny all
+coredump_dir /var/spool/squid
+dns_nameservers 1.1.1.1 1.0.0.1
+refresh_pattern ^ftp: 1440 20% 10080
+refresh_pattern ^gopher: 1440 0% 1440
+refresh_pattern -i (/cgi-bin/|\?) 0 0% 0
+refresh_pattern . 0 20% 4320
+visible_hostname localhost
+mySquid
+
+ sed -i "s|SquidCacheHelper|$Privoxy_Port1|g" /etc/squid/squid.conf
+
+ # Starting Proxy server
+ echo -e "Restarting proxy server.."
+ systemctl restart privoxy
+ systemctl restart squid
+}
+
+function OvpnConfigs(){
+ # Creating nginx config for our ovpn config downloads webserver
+ cat <<'myNginxC' > /etc/nginx/conf.d/bonveio-ovpn-config.conf
+# My OpenVPN Config Download Directory
+server {
+ listen 0.0.0.0:myNginx;
+ server_name localhost;
+ root /var/www/openvpn;
+ index index.html;
+}
+myNginxC
+
+ # Setting our nginx config port for .ovpn download site
+ sed -i "s|myNginx|$OvpnDownload_Port|g" /etc/nginx/conf.d/bonveio-ovpn-config.conf
+
+ # Removing Default nginx page(port 80)
+ rm -rf /etc/nginx/sites-*
+
+ # Creating our root directory for all of our .ovpn configs
+ rm -rf /var/www/openvpn
+ mkdir -p /var/www/openvpn
+# Now creating all of our OpenVPN Configs 
+cat <<EOF152> /var/www/openvpn/GTMConfig.ovpn
+client
+dev tun
+remote $IPADDR $OpenVPN_Port1 tcp
+http-proxy $IPADDR 8080
+http-proxy-retry
+resolv-retry infinite
+route-method exe
+nobind
+persist-key
+persist-tun
+comp-lzo
+cipher AES-256-CBC
+auth SHA256
+push "redirect-gateway def1 bypass-dhcp"
+verb 3
+push-peer-info
+ping 10
+ping-restart 60
+hand-window 70
+server-poll-timeout 4
+reneg-sec 2592000
+sndbuf 100000
+rcvbuf 100000
+remote-cert-tls server
+key-direction 1
+
+<auth-user-pass>
+sam
+sam
+</auth-user-pass>
+<ca>
+$(cat /etc/openvpn/ca.crt)
+</ca>
+<cert>
+$(cat /etc/openvpn/server.crt)
+</cert>
+<key>
+$(cat /etc/openvpn/server.key)
+</key>
+<tls-auth>
+$(cat /etc/openvpn/tls-auth.key)
+</tls-auth>
+EOF152
+
+cat <<EOF16> /var/www/openvpn/SunConfig.ovpn
+# Credits to GakodX
+client
+dev tun
+proto udp
+remote $IPADDR $OpenVPN_Port2
+resolv-retry infinite
+route-method exe
+nobind
+persist-key
+persist-tun
+comp-lzo
+cipher AES-256-CBC
+auth SHA256
+push "redirect-gateway def1 bypass-dhcp"
+verb 3
+push-peer-info
+ping 10
+ping-restart 60
+hand-window 70
+server-poll-timeout 4
+reneg-sec 2592000
+sndbuf 100000
+rcvbuf 100000
+remote-cert-tls server
+key-direction 1
+<auth-user-pass>
+sam
+sam
+</auth-user-pass>
+<ca>
+$(cat /etc/openvpn/ca.crt)
+</ca>
+<cert>
+$(cat /etc/openvpn/server.crt)
+</cert>
+<key>
+$(cat /etc/openvpn/server.key)
+</key>
+<tls-auth>
+$(cat /etc/openvpn/tls-auth.key)
+</tls-auth>
+EOF16
+
+cat <<EOF17> /var/www/openvpn/SunNoLoad.ovpn
+client
+proto tcp-client
+dev tun
+remote 127.0.0.1 443
+route $IPADDR 255.255.255.255 net_gateway 
+http-proxy $IPADDR 8080
+http-proxy-retry
+resolv-retry infinite
+route-method exe
+nobind
+persist-key
+persist-tun
+comp-lzo
+cipher AES-256-CBC
+auth SHA256
+push "redirect-gateway def1 bypass-dhcp"
+verb 3
+push-peer-info
+ping 10
+ping-restart 60
+hand-window 70
+server-poll-timeout 4
+reneg-sec 2592000
+sndbuf 100000
+rcvbuf 100000
+remote-cert-tls server
+key-direction 1
+<auth-user-pass>
+sam
+sam
+</auth-user-pass>
+<ca>
+$(cat /etc/openvpn/ca.crt)
+</ca>
+<cert>
+$(cat /etc/openvpn/server.crt)
+</cert>
+<key>
+$(cat /etc/openvpn/server.key)
+</key>
+<tls-auth>
+$(cat /etc/openvpn/tls-auth.key)
+</tls-auth>
+EOF17
+
+ # Creating OVPN download site index.html
+cat <<'mySiteOvpn' > /var/www/openvpn/index.html
+<!DOCTYPE html>
+<html lang="en">
+
+<!-- OVPN Download site by LODIxyrussScript -->
+
+<head><meta charset="utf-8" /><title>MyScriptName OVPN Config Download</title><meta name="description" content="MyScriptName Server" /><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" /><meta name="theme-color" content="#000000" /><link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.8.2/css/all.css"><link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet"><link href="https://cdnjs.cloudflare.com/ajax/libs/mdbootstrap/4.8.3/css/mdb.min.css" rel="stylesheet"></head><body><div class="container justify-content-center" style="margin-top:9em;margin-bottom:5em;"><div class="col-md"><div class="view"><img src="https://openvpn.net/wp-content/uploads/openvpn.jpg" class="card-img-top"><div class="mask rgba-white-slight"></div></div><div class="card"><div class="card-body"><h5 class="card-title">Config List</h5><br /><ul class="list-group"><li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p>For Globe/TM <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small> For EZ/GS Promo with WNP freebies</small></p><a class="btn btn-outline-success waves-effect btn-sm" href="http://IP-ADDRESS:NGINXPORT/GTMConfig.ovpn" style="float:right;"><i class="fa fa-download"></i> Download</a></li><li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p>For Sun <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small> For TU UDP Promos</small></p><a class="btn btn-outline-success waves-effect btn-sm" href="http://IP-ADDRESS:NGINXPORT/SunConfig.ovpn" style="float:right;"><i class="fa fa-download"></i> Download</a></li><li class="list-group-item justify-content-between align-items-center" style="margin-bottom:1em;"><p>For Sun <span class="badge light-blue darken-4">Android/iOS/PC/Modem</span><br /><small> Trinet GIGASTORIES Promos</small></p><a class="btn btn-outline-success waves-effect btn-sm" href="http://IP-ADDRESS:NGINXPORT/GStories.ovpn" style="float:right;"><i class="fa fa-download"></i> Download</a></li></ul></div></div></div></div></body></html>
+mySiteOvpn
+ 
+ # Setting template's correct name,IP address and nginx Port
+ sed -i "s|MyScriptName|$MyScriptName|g" /var/www/openvpn/index.html
+ sed -i "s|NGINXPORT|$OvpnDownload_Port|g" /var/www/openvpn/index.html
+ sed -i "s|IP-ADDRESS|$IPADDR|g" /var/www/openvpn/index.html
+
+ # Restarting nginx service
+ systemctl restart nginx
+ 
+ # Creating all .ovpn config archives
+ cd /var/www/openvpn
+ zip -qq -r Configs.zip *.ovpn
+ cd
+}
+
+function ip_address(){
+  local IP="$( ip addr | egrep -o '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | egrep -v "^192\.168|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-2]\.|^10\.|^127\.|^255\.|^0\." | head -n 1 )"
+  [ -z "${IP}" ] && IP="$( wget -qO- -t1 -T2 ipv4.icanhazip.com )"
+  [ -z "${IP}" ] && IP="$( wget -qO- -t1 -T2 ipinfo.io/ip )"
+  [ ! -z "${IP}" ] && echo "${IP}" || echo
+} 
+IPADDR="$(ip_address)"
+
+function ConfStartup(){
+ # Daily reboot time of our machine
+ # For cron commands, visit https://crontab.guru
+ echo -e "0 4\t* * *\troot\treboot" > /etc/cron.d/b_reboot_job
+
+ # Creating directory for startup script
+ rm -rf /etc/barts
+ mkdir -p /etc/barts
+ chmod -R 755 /etc/barts
+ 
+ # Creating startup script using cat eof tricks
+ cat <<'EOFSH' > /etc/barts/startup.sh
+#!/bin/bash
+# Setting server local time
+ln -fs /usr/share/zoneinfo/MyVPS_Time /etc/localtime
+
+# Prevent DOS-like UI when installing using APT (Disabling APT interactive dialog)
+export DEBIAN_FRONTEND=noninteractive
+
+# Allowing ALL TCP ports for our machine (Simple workaround for policy-based VPS)
+iptables -A INPUT -s $(wget -4qO- http://ipinfo.io/ip) -p tcp -m multiport --dport 1:65535 -j ACCEPT
+
+# Allowing OpenVPN to Forward traffic
+/bin/bash /etc/openvpn/openvpn.bash
+
+# Deleting Expired SSH Accounts
+/usr/local/sbin/delete_expired &> /dev/null
+EOFSH
+ chmod +x /etc/barts/startup.sh
+ 
+ # Setting server local time every time this machine reboots
+ sed -i "s|MyVPS_Time|$MyVPS_Time|g" /etc/barts/startup.sh
+
+ # 
+ rm -rf /etc/sysctl.d/99*
+
+ # Setting our startup script to run every machine boots 
+ echo "[Unit]
+Description=Barts Startup Script
+Before=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /etc/barts/startup.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target" > /etc/systemd/system/barts.service
+ chmod +x /etc/systemd/system/barts.service
+ systemctl daemon-reload
+ systemctl start barts
+ systemctl enable barts &> /dev/null
+
+ # Rebooting cron service
+ systemctl restart cron
+ systemctl enable cron
+ 
+}
+
+function ConfMenu(){
+echo -e " Creating Menu scripts.."
+
+cd /usr/local/sbin/
+rm -rf {accounts,base-ports,base-ports-wc,base-script,bench-network,clearcache,connections,create,create_random,create_trial,delete_expired,diagnose,edit_dropbear,edit_openssh,edit_openvpn,edit_ports,edit_squid3,edit_stunnel4,locked_list,menu,options,ram,reboot_sys,reboot_sys_auto,restart_services,server,set_multilogin_autokill,set_multilogin_autokill_lib,show_ports,speedtest,user_delete,user_details,user_details_lib,user_extend,user_list,user_lock,user_unlock}
+wget -q 'https://raw.githubusercontent.com/Barts-23/menu1/master/menu.zip'
+unzip -qq menu.zip
+rm -f menu.zip
+chmod +x ./*
+dos2unix ./* &> /dev/null
+sed -i 's|/etc/squid/squid.conf|/etc/privoxy/config|g' ./*
+sed -i 's|http_port|listen-address|g' ./*
+cd ~
+
+echo 'clear' > /etc/profile.d/barts.sh
+echo 'echo '' > /var/log/syslog' >> /etc/profile.d/barts.sh
+echo 'screenfetch -p -A Android' >> /etc/profile.d/barts.sh
+chmod +x /etc/profile.d/barts.sh
+}
+
+function ScriptMessage(){
+ echo -e " (GAKODS) $MyScriptName Debian VPS Installer"
+ echo -e " Open release version"
+ echo -e ""
+ echo -e " Script created by Bonveio"
+ echo -e " Edited by LODIxyruss"
+}
+
+
+#############################
+#############################
+## Installation Process
+#############################
+## WARNING: Do not modify or edit anything
+## if you did'nt know what to do.
+## This part is too sensitive.
+#############################
+#############################
+
+ # (For OpenVPN) Checking it this machine have TUN Module, this is the tunneling interface of OpenVPN server
+ if [[ ! -e /dev/net/tun ]]; then
+ echo -e "[\e[1;31mÃƒâ€”\e[0m] You cant use this script without TUN Module installed/embedded in your machine, file a support ticket to your machine admin about this matter"
+ echo -e "[\e[1;31m-\e[0m] Script is now exiting..."
+ exit 1
+fi
+
+ # Begin Installation by Updating and Upgrading machine and then Installing all our wanted packages/services to be install.
+ ScriptMessage
+ sleep 2
+ InstUpdates
+ 
+ # Configure OpenSSH and Dropbear
+ echo -e "Configuring ssh..."
+ InstSSH
+ 
+ # Configure Stunnel
+ echo -e "Configuring stunnel..."
+ InsStunnel
+ 
+ # Configure Webmin
+ echo -e "Configuring webmin..."
+ InstWebmin
+ 
+ # Configure Privoxy and Squid
+ echo -e "Configuring proxy..."
+ InsProxy
+ 
+ # Configure OpenVPN
+ echo -e "Configuring OpenVPN..."
+ InsOpenVPN
+ 
+ # Configuring Nginx OVPN config download site
+ OvpnConfigs
+
+ # Some assistance and startup scripts
+ ConfStartup
+
+ # VPS Menu script v1.0
+ ConfMenu
+ 
+ # Setting server local time
+ ln -fs /usr/share/zoneinfo/$MyVPS_Time /etc/localtime
+ 
+ clear
+ cd ~
+
+ # Running sysinfo 
+ bash /etc/profile.d/barts.sh
+ 
+ # Showing script's banner message
+ ScriptMessage
+ 
+ # Showing additional information from installating this script
+ echo -e ""
+ echo -e " Success Installation"
+ echo -e ""
+ echo -e " Service Ports: "
+ echo -e " OpenSSH: $SSH_Port1, $SSH_Port2"
+ echo -e " Stunnel: $Stunnel_Port1, $Stunnel_Port2"
+ echo -e " DropbearSSH: $Dropbear_Port1, $Dropbear_Port2"
+ echo -e " Privoxy: $Privoxy_Port1, $Privoxy_Port2"
+ echo -e " Squid: $Proxy_Port1, $Proxy_Port2"
+ echo -e " OpenVPN: $OpenVPN_Port1, $OpenVPN_Port2"
+ echo -e " OpenVPN SSL: $Stunnel_Port3"
+ echo -e " NGiNX: $OvpnDownload_Port"
+ echo -e " Webmin: 10000"
+ echo -e " L2tp IPSec Key: fakenetvpn101"
+ echo -e ""
+ echo -e ""
+ echo -e " OpenVPN Configs Download site"
+ echo -e " http://$IPADDR:$OvpnDownload_Port"
+ echo -e ""
+ echo -e " All OpenVPN Configs Archive"
+ echo -e " http://$IPADDR:$OvpnDownload_Port/Configs.zip"
+ echo -e ""
+ echo -e ""
+ echo -e " [Note] DO NOT RESELL THIS SCRIPT"
+
+ # Clearing all logs from installation
+ rm -rf /root/.bash_history && history -c && echo '' > /var/log/syslog
+
+rm -f yy*
+exit 1 
