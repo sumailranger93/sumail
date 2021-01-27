@@ -821,10 +821,10 @@ sam
 $(cat /etc/openvpn/ca.crt)
 </ca>
 <cert>
-$(cat /etc/openvpn/client.crt)
+$(cat /etc/openvpn/server.crt)
 </cert>
 <key>
-$(cat /etc/openvpn/client.key)
+$(cat /etc/openvpn/server.key)
 </key>
 <tls-auth>
 $(cat /etc/openvpn/tls-auth.key)
