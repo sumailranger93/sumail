@@ -50,6 +50,32 @@ Privoxy_Port2='9090'
 # OpenVPN Config Download Port
 OvpnDownload_Port='81' # Before changing this value, please read this document. It contains all unsafe ports for Google Chrome Browser, please read from line #23 to line #89: https://chromium.googlesource.com/chromium/src.git/+/refs/heads/master/net/base/port_util.cc
 
+echo ipv4 >> /etc/modules
+echo ipv6 >> /etc/modules
+sysctl -w net.ipv4.ip_forward=1
+sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
+sed -i 's/#net.ipv6.conf.all.forwarding=1/net.ipv6.conf.all.forwarding=1/g' /etc/sysctl.conf
+sysctl -p
+clear
+echo "
+REMOVE SPAM PACKAGE
+
+COMPLETE 10%
+"
+apt-get -y --purge remove samba*;
+apt-get -y --purge remove apache2*;
+apt-get -y --purge remove sendmail*;
+apt-get -y --purge remove postfix*;
+apt-get -y --purge remove bind*;
+apt-get -y install wget curl
+
+clear
+echo "
+UPDATE AND UPGRADE PROCESS
+
+PLEASE WAIT TAKE TIME 1-5 MINUTE
+"
+
 # Server local time
 MyVPS_Time='Asia/Kuala_Lumpur'
 #############################
@@ -92,8 +118,8 @@ function InstUpdates(){
  
  # Installing OpenVPN by pulling its repository inside sources.list file 
  #rm -rf /etc/apt/sources.list.d/openvpn*
- echo "deb http://build.openvpn.net/debian/openvpn/stable $(lsb_release -sc) main" >/etc/apt/sources.list.d/openvpn.list && apt-key del E158C569 && wget -O - https://swupdate.openvpn.net/repos/repo-public.gpg | apt-key add -
- wget -qO security-openvpn-net.asc "https://keys.openpgp.org/vks/v1/by-fingerprint/F554A3687412CFFEBDEFE0A312F5F7B42F2B01E7" && gpg --import security-openvpn-net.asc
+ #echo "deb http://build.openvpn.net/debian/openvpn/stable $(lsb_release -sc) main" >/etc/apt/sources.list.d/openvpn.list && apt-key del E158C569 && wget -O - https://swupdate.openvpn.net/repos/repo-public.gpg | apt-key add -
+ #wget -qO security-openvpn-net.asc "https://keys.openpgp.org/vks/v1/by-fingerprint/F554A3687412CFFEBDEFE0A312F5F7B42F2B01E7" && gpg --import security-openvpn-net.asc
  apt-get update -y
  apt-get install openvpn -y
 }
@@ -444,7 +470,7 @@ cat <<EOF152> /var/www/openvpn/GTMConfig.ovpn
 client
 dev tun
 remote $IPADDR $OpenVPN_Port1 tcp
-http-proxy $(curl -s http://ipinfo.io/ip || wget -q http://ipinfo.io/ip) $Proxy_Port
+http-proxy 8080
 resolv-retry infinite
 route-method exe
 resolv-retry infinite
