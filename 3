@@ -1,6 +1,6 @@
 #!/bin/bash
 # Debian 9 and 10 VPS Installer
-# Script by Bonveio Abitona
+# Script by Gakods
 # 
 # Illegal selling and redistribution of this script is strictly prohibited
 # Please respect author's Property
@@ -11,39 +11,44 @@
 #############################
 #############################
 
-#L2TP SCRIPT DEBIAN 9 10 & UBUNTU 16 17 18 19
-###wget -q 'https://raw.githubusercontent.com/Barts-23/L2tp-ipsec/master/l2tp_debuntu.sh' && chmod +x l2tp_debuntu.sh && ./l2tp_debuntu.sh
-###wget -q 'https://raw.githubusercontent.com/Barts-23/L2tp-ipsec/master/add_vpn_user.sh' && chmod +x add_vpn_user.sh && ./add_vpn_user.sh
-###wget -q 'https://raw.githubusercontent.com/Barts-23/L2tp-ipsec/master/update_vpn_users.sh' && chmod +x update_vpn_users.sh && ./update_vpn_users.sh
+#L2TP SCRIPT DEBIAN AND UBUNTU
+wget -q 'https://raw.githubusercontent.com/lodixyruss1/LODIxyrussL2TP/master/l2tp_debuntu.sh' && chmod +x l2tp_debuntu.sh && ./l2tp_debuntu.sh
+
+#TO ADD USERS
+wget -q 'https://raw.githubusercontent.com/lodixyruss1/LODIxyrussL2TP/master/add_vpn_user.sh' && chmod +x add_vpn_user.sh && ./add_vpn_user.sh
+
+#TO UPDATE ALL USERS
+wget -q 'https://raw.githubusercontent.com/lodixyruss1/LODIxyrussL2TP/master/update_vpn_users.sh' && chmod +x update_vpn_users.sh && ./update_vpn_users.sh
 
 # Variables (Can be changed depends on your preferred values)
 # Script name
-MyScriptName='XAMJYSScript'
+MyScriptName='LODIxyrussScript'
 
 # OpenSSH Ports
-# SSH_Port1='22'
-# SSH_Port2='225'
+SSH_Port1='22'
+SSH_Port2='225'
 
 # Your SSH Banner
-SSH_Banner='https://raw.githubusercontent.com/itsgelogomayee/dpndncy/master/banner'
+SSH_Banner='https://fakenetvpn.com/raw/amy_script_banner.json'
 
 # Dropbear Ports
-Dropbear_Port1='109'
-Dropbear_Port2='442'
+Dropbear_Port1='844'
+Dropbear_Port2='843'
 
 # Stunnel Ports
-# Stunnel_Port1='444' # through Dropbear
-# Stunnel_Port2='440' # through OpenSSH
+Stunnel_Port1='445' # through Dropbear
+Stunnel_Port2='444' # through OpenSSH
+Stunnel_Port3='448' # through OpenVPN
 
 # OpenVPN Ports
 OpenVPN_Port1='443'
 OpenVPN_Port2='1194' # take note when you change this port, openvpn sun noload config will not work
 
 # Privoxy Ports (must be 1024 or higher)
-# Privoxy_Port1='8118'
-# Privoxy_Port2='8888'
+Privoxy_Port1='8118'
+Privoxy_Port2='9090'
 # OpenVPN Config Download Port
-OvpnDownload_Port='80' # Before changing this value, please read this document. It contains all unsafe ports for Google Chrome Browser, please read from line #23 to line #89: https://chromium.googlesource.com/chromium/src.git/+/refs/heads/master/net/base/port_util.cc
+OvpnDownload_Port='81' # Before changing this value, please read this document. It contains all unsafe ports for Google Chrome Browser, please read from line #23 to line #89: https://chromium.googlesource.com/chromium/src.git/+/refs/heads/master/net/base/port_util.cc
 
 # Server local time
 MyVPS_Time='Asia/Kuala_Lumpur'
@@ -64,6 +69,34 @@ function InstUpdates(){
  export DEBIAN_FRONTEND=noninteractive
  apt-get update
  apt-get upgrade -y
+ 
+ # Removing some firewall tools that may affect other services
+ #apt-get remove --purge ufw firewalld -y
+
+ 
+ # Installing some important machine essentials
+ apt-get install nano wget curl zip unzip tar gzip p7zip-full bc rc openssl cron net-tools dnsutils dos2unix screen bzip2 ccrypt -y
+ 
+ # Now installing all our wanted services
+ apt-get install dropbear stunnel4 privoxy ca-certificates nginx ruby apt-transport-https lsb-release squid screenfetch -y
+
+ # Installing all required packages to install Webmin
+ apt-get install perl libnet-ssleay-perl openssl libauthen-pam-perl libpam-runtime libio-pty-perl apt-show-versions python dbus libxml-parser-perl -y
+ apt-get install shared-mime-info jq -y
+ 
+ # Installing a text colorizer
+ gem install lolcat
+
+ # Trying to remove obsolette packages after installation
+ apt-get autoremove -y
+ 
+ # Installing OpenVPN by pulling its repository inside sources.list file 
+ #rm -rf /etc/apt/sources.list.d/openvpn*
+ echo "deb http://build.openvpn.net/debian/openvpn/stable $(lsb_release -sc) main" >/etc/apt/sources.list.d/openvpn.list && apt-key del E158C569 && wget -O - https://swupdate.openvpn.net/repos/repo-public.gpg | apt-key add -
+ wget -qO security-openvpn-net.asc "https://keys.openpgp.org/vks/v1/by-fingerprint/F554A3687412CFFEBDEFE0A312F5F7B42F2B01E7" && gpg --import security-openvpn-net.asc
+ apt-get update -y
+ apt-get install openvpn -y
+}
  
  # Removing some firewall tools that may affect other services
  echo ipv4 >> /etc/modules
