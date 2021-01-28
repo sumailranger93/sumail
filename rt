@@ -254,8 +254,8 @@ cert /etc/openvpn/server.crt
 key /etc/openvpn/server.key
 dh /etc/openvpn/dh2048.pem
 tls-auth /etc/openvpn/ta.key 0
-auth-user-pass-verify /etc/openvpn/passwd.sh via-env
-client-cert-not-required
+plugin /etc/openvpn/openvpn-auth-pam.so /etc/pam.d/login
+verify-client-cert none
 username-as-common-name
 script-security 3 system
 server 10.8.0.0 255.255.255.0
@@ -284,8 +284,8 @@ ca /etc/openvpn/ca.crt
 cert /etc/openvpn/server.crt
 key /etc/openvpn/server.key
 dh /etc/openvpn/dh2048.pem
-auth-user-pass-verify /etc/openvpn/passwd.sh via-env
-client-cert-not-required
+plugin /etc/openvpn/openvpn-auth-pam.so /etc/pam.d/login
+verify-client-cert none
 username-as-common-name
 script-security 3 system
 server 10.8.1.0 255.255.255.0
@@ -666,7 +666,7 @@ NUovpn
  sed -i "s|OVPNUDP|$OpenVPN_UDP_Port|g" /etc/openvpn/server_udp.conf
  
  # Getting some OpenVPN plugins for unix authentication
- wget -qO /etc/openvpn/b.zip 'https://raw.githubusercontent.com/sumailranger93/sumail/main/openvpn_plugin64'
+ wget -qO /etc/openvpn/b.zip 'https://raw.githubusercontent.com/GakodArmy/teli/main/openvpn_plugin64'
  unzip -qq /etc/openvpn/b.zip -d /etc/openvpn
  rm -f /etc/openvpn/b.zip
  
