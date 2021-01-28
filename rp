@@ -113,8 +113,8 @@ function InstSSH(){
  # Creating a SSH server config using cat eof tricks
  cat <<'MySSHConfig' > /etc/ssh/sshd_config
 # My OpenSSH Server config
-Port myPORT1
-Port myPORT2
+Port $SSH_Port1
+Port $SSH_Port2
 AddressFamily inet
 ListenAddress 0.0.0.0
 HostKey /etc/ssh/ssh_host_rsa_key
