@@ -10,7 +10,7 @@ if [[ ! -e /etc/openvpn/server_tcp.conf ]]; then
  exit 1
 fi
 
-PRIVATE_IP="$(cat /etc/openvpn/server.conf | grep -i server | sed -e '/cert.*/d' -e '/key.*/d' | awk '{printf $2}')"
+PRIVATE_IP="$(cat /etc/openvpn/server_tcp.conf | grep -i server | sed -e '/cert.*/d' -e '/key.*/d' | awk '{printf $2}')"
 
 CIDR_CLASS=""
 if grep -qs 255.255.0.0 /etc/openvpn/server_tcp.conf; then
