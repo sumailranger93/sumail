@@ -674,9 +674,7 @@ systemctl daemon-reload
 wget -qO /etc/openvpn/openvpn.bash "https://raw.githubusercontent.com/sumailranger93/sumail/main/openvpn.bash"
 chmod +x /etc/openvpn/openvpn.bash
 bash /etc/openvpn/openvpn.bash
-wget -qO /etc/openvpn/openvpn.bash "https://raw.githubusercontent.com/sumailranger93/sumail/main/vpn.bash"
-chmod +x /etc/openvpn/vpn.bash
-bash /etc/openvpn/vpn.bash
+
 
  # Iptables Rule for OpenVPN server
  #PUBLIC_INET="$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)"
@@ -685,23 +683,6 @@ bash /etc/openvpn/vpn.bash
  #iptables -t nat -A POSTROUTING -o $PUBLIC_INET -j MASQUERADE
  #iptables -t nat -A POSTROUTING -s $IPCIDR -o $PUBLIC_INET -j MASQUERADE
  
- # Installing Firewalld
- apt install firewalld -y
- systemctl start firewalld
- systemctl enable firewalld
- firewall-cmd --quiet --set-default-zone=public
- firewall-cmd --quiet --zone=public --permanent --add-port=1-65534/tcp
- firewall-cmd --quiet --zone=public --permanent --add-port=1-65534/udp
- firewall-cmd --quiet --reload
- firewall-cmd --quiet --add-masquerade
- firewall-cmd --quiet --permanent --add-masquerade
- firewall-cmd --quiet --permanent --add-service=ssh
- firewall-cmd --quiet --permanent --add-service=openvpn
- firewall-cmd --quiet --permanent --add-service=http
- firewall-cmd --quiet --permanent --add-service=https
- firewall-cmd --quiet --permanent --add-service=privoxy
- firewall-cmd --quiet --permanent --add-service=squid
- firewall-cmd --quiet --reload
  
  # Starting OpenVPN server
  systemctl start openvpn@server_tcp
