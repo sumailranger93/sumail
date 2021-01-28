@@ -861,8 +861,8 @@ myNginxC
 cat <<EOF152> /var/www/openvpn/GTMConfig.ovpn
 client
 dev tun
-remote $IPADDR $OpenVPN_Port1 tcp
-http-proxy $IPADDR 8080
+remote $IPADDR $OpenVPN_TCP_Port tcp
+http-proxy $IPADDR $Squid_Port1
 http-proxy-retry
 resolv-retry infinite
 route-method exe
