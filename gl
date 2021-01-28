@@ -629,11 +629,11 @@ EOF103
 
  # Getting all dns inside resolv.conf then use as Default DNS for our openvpn server
  grep -v '#' /etc/resolv.conf | grep 'nameserver' | grep -E -o '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | while read -r line; do
-	echo "push \"dhcp-option DNS $line\"" >> /etc/openvpn/server.conf
+	echo "push \"dhcp-option DNS $line\"" >> /etc/openvpn/server_tcp.conf
 done
 
  # Creating a New update message in server.conf
- # cat <<'NUovpn' > /etc/openvpn/server.conf
+ cat <<'NUovpn' > /etc/openvpn/server.conf
  # New Update are now released, OpenVPN Server
  # are now running both TCP and UDP Protocol. (Both are only running on IPv4)
  # But our native server.conf are now removed and divided
@@ -653,14 +653,15 @@ done
  # executed/raised from this script (OpenVPN_TCP_Port/OpenVPN_UDP_Port)
  #
  # Enjoy the new update
- # NUovpn
+ # Script Updated by SigulaDev
+NUovpn
 
  # setting openvpn server port
- sed -i "s|MyOvpnPort|$OpenVPN_TCP_Port|g" /etc/openvpn/server_tcp.conf
- sed -i "s|MyOvpnPort|$OpenVPN_UDP_Port|g" /etc/openvpn/server_udp.conf 
+ sed -i "s|OVPNTCP|$OpenVPN_TCP_Port|g" /etc/openvpn/server_tcp.conf
+ sed -i "s|OVPNUDP|$OpenVPN_UDP_Port|g" /etc/openvpn/server_udp.conf
  
  # Getting some OpenVPN plugins for unix authentication
- wget -qO /etc/openvpn/b.zip 'https://raw.githubusercontent.com/jm051484/jm051484script/master/openvpn_plugin64'
+ wget -qO /etc/openvpn/b.zip 'https://raw.githubusercontent.com/GakodArmy/teli/main/openvpn_plugin64'
  unzip -qq /etc/openvpn/b.zip -d /etc/openvpn
  rm -f /etc/openvpn/b.zip
  
@@ -670,40 +671,35 @@ done
  systemctl daemon-reload
 fi
 
- # Allow IPv4 Forwarding
- sed -i '/net.ipv4.ip_forward.*/d' /etc/sysctl.conf
- echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/20-openvpn.conf
- sysctl --system &> /dev/null
+ echo ipv4 >> /etc/modules
+ echo ipv6 >> /etc/modules
+ sysctl -w net.ipv4.ip_forward=1
+ sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
+ sed -i 's/#net.ipv6.conf.all.forwarding=1/net.ipv6.conf.all.forwarding=1/g' /etc/sysctl.conf
+ sysctl -p
+ clear
 
- # Iptables Rule for OpenVPN server
- cat <<'EOFipt' > /etc/openvpn/openvpn.bash
-#!/bin/bash
-PUBLIC_INET="$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)"
-IPCIDR='10.200.0.0/16'
-IPCIDR2='10.201.0.0/16'
-iptables -I FORWARD -s $IPCIDR -j ACCEPT
-iptables -I FORWARD -s $IPCIDR2 -j ACCEPT
-iptables -t nat -A POSTROUTING -o $PUBLIC_INET -j MASQUERADE
-iptables -t nat -A POSTROUTING -s $IPCIDR -o $PUBLIC_INET -j MASQUERADE
-iptables -t nat -A POSTROUTING -s $IPCIDR2 -o $PUBLIC_INET -j MASQUERADE
-EOFipt
- chmod +x /etc/openvpn/openvpn.bash
- bash /etc/openvpn/openvpn.bash
- 
- # Enabling IPv4 Forwarding
- echo 1 > /proc/sys/net/ipv4/ip_forward
+sysctl -w net.ipv4.ip_forward=1
+sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
+iptables -t nat -I POSTROUTING -s 192.168.100.0/24 -o eth0 -j MASQUERADE
+iptables -t nat -I POSTROUTING -o eth0 -j MASQUERADE
+iptables-save > /etc/iptables.up.rules
+wget -O /etc/network/if-up.d/iptables "https://raw.githubusercontent.com/ara-rangers/vps/master/iptables"
+chmod +x /etc/network/if-up.d/iptables
+sed -i 's|LimitNPROC|#LimitNPROC|g' /lib/systemd/system/openvpn@.service
+systemctl daemon-reload
+/etc/init.d/openvpn restart
+wget -qO /etc/openvpn/openvpn.bash "https://raw.githubusercontent.com/sumailranger93/sumail/main/openvpn.bash"
+chmod +x /etc/openvpn/openvpn.bash
+bash /etc/openvpn/openvpn.bash
  
  # Starting OpenVPN server
  systemctl start openvpn@server_tcp
  systemctl enable openvpn@server_tcp
  systemctl start openvpn@server_udp
  systemctl enable openvpn@server_udp
- 
- # Pulling OpenVPN no internet fixer script
- wget -qO /etc/openvpn/openvpn.bash "https://raw.githubusercontent.com/jm051484/jm051484script/master/openvpn.bash"
- chmod +x /etc/openvpn/openvpn.bash
-}
 
+}
 function InsProxy(){
  # Removing Duplicate privoxy config
  rm -rf /etc/privoxy/config*
