@@ -640,16 +640,34 @@ EOF103
  grep -v '#' /etc/resolv.conf | grep 'nameserver' | grep -E -o '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | while read -r line; do
 	echo "push \"dhcp-option DNS $line\"" >> /etc/openvpn/server_tcp.conf
 done
- grep -v '#' /etc/resolv.conf | grep 'nameserver' | grep -E -o '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | while read -r line; do
-	echo "push \"dhcp-option DNS $line\"" >> /etc/openvpn/server_udp.conf
-done
+
+ # Creating a New update message in server.conf
+ cat <<'NUovpn' > /etc/openvpn/server.conf
+ # New Update are now released, OpenVPN Server
+ # are now running both TCP and UDP Protocol. (Both are only running on IPv4)
+ # But our native server.conf are now removed and divided
+ # Into two different configs base on their Protocols:
+ #  * OpenVPN TCP (located at /etc/openvpn/server_tcp.conf
+ #  * OpenVPN UDP (located at /etc/openvpn/server_udp.conf
+ # 
+ # Also other logging files like
+ # status logs and server logs
+ # are moved into new different file names:
+ #  * OpenVPN TCP Server logs (/etc/openvpn/tcp.log)
+ #  * OpenVPN UDP Server logs (/etc/openvpn/udp.log)
+ #  * OpenVPN TCP Status logs (/etc/openvpn/tcp_stats.log)
+ #  * OpenVPN UDP Status logs (/etc/openvpn/udp_stats.log)
+ #
+ # Server ports are configured base on env vars
+ # executed/raised from this script (OpenVPN_TCP_Port/OpenVPN_UDP_Port)
+ #
+ # Enjoy the new update
+ # Script Updated by SigulaDev
+NUovpn
 
  # setting openvpn server port
  sed -i "s|MyOvpnPort1|$OpenVPN_Port1|g" /etc/openvpn/server_tcp.conf
  sed -i "s|MyOvpnPort2|$OpenVPN_Port2|g" /etc/openvpn/server_udp.conf
- 
- # Generating openvpn dh.pem file using openssl
- #openssl dhparam -out /etc/openvpn/dh.pem 1024
  
  # Getting some OpenVPN plugins for unix authentication
  wget -qO /etc/openvpn/b.zip 'https://raw.githubusercontent.com/GakodArmy/teli/main/openvpn_plugin64'
@@ -668,44 +686,27 @@ fi
  sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
  sed -i 's/#net.ipv6.conf.all.forwarding=1/net.ipv6.conf.all.forwarding=1/g' /etc/sysctl.conf
  sysctl -p
+ clear
 
-
- iptables -t nat -I POSTROUTING -s 192.168.100.0/24 -o eth0 -j MASQUERADE
- iptables -t nat -I POSTROUTING -o eth0 -j MASQUERADE
- iptables-save > /etc/iptables.up.rules
- wget -O /etc/network/if-up.d/iptables "https://raw.githubusercontent.com/ara-rangers/vps/master/iptables"
- chmod +x /etc/network/if-up.d/iptables
- sed -i 's|LimitNPROC|#LimitNPROC|g' /lib/systemd/system/openvpn@.service
- systemctl daemon-reload
- etc/init.d/openvpn restart
-
- # Installing Firewalld
- apt install firewalld -y
- systemctl start firewalld
- systemctl enable firewalld
- firewall-cmd --quiet --set-default-zone=public
- firewall-cmd --quiet --zone=public --permanent --add-port=1-65534/tcp
- firewall-cmd --quiet --zone=public --permanent --add-port=1-65534/udp
- firewall-cmd --quiet --reload
- firewall-cmd --quiet --add-masquerade
- firewall-cmd --quiet --permanent --add-masquerade
- firewall-cmd --quiet --permanent --add-service=ssh
- firewall-cmd --quiet --permanent --add-service=openvpn
- firewall-cmd --quiet --permanent --add-service=http
- firewall-cmd --quiet --permanent --add-service=https
- firewall-cmd --quiet --permanent --add-service=privoxy
- firewall-cmd --quiet --permanent --add-service=squid
- firewall-cmd --quiet --reload
+sysctl -w net.ipv4.ip_forward=1
+sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
+iptables -t nat -I POSTROUTING -s 192.168.100.0/24 -o eth0 -j MASQUERADE
+iptables -t nat -I POSTROUTING -o eth0 -j MASQUERADE
+iptables-save > /etc/iptables.up.rules
+wget -O /etc/network/if-up.d/iptables "https://raw.githubusercontent.com/ara-rangers/vps/master/iptables"
+chmod +x /etc/network/if-up.d/iptables
+sed -i 's|LimitNPROC|#LimitNPROC|g' /lib/systemd/system/openvpn@.service
+systemctl daemon-reload
+/etc/init.d/openvpn restart
+wget -qO /etc/openvpn/openvpn.bash "https://raw.githubusercontent.com/sumailranger93/sumail/main/openvpn.bash"
+chmod +x /etc/openvpn/openvpn.bash
+bash /etc/openvpn/openvpn.bash
  
  # Starting OpenVPN server
  systemctl start openvpn@server_tcp
  systemctl enable openvpn@server_tcp
  systemctl start openvpn@server_udp
  systemctl enable openvpn@server_udp
- 
- # Pulling OpenVPN no internet fixer script
- #wget -qO /etc/openvpn/openvpn.bash "https://raw.githubusercontent.com/ara-rangers/vps/master/iptables"
- #0chmod +x /etc/openvpn/openvpn.bash
 }
 
 function InsProxy(){
